@@ -22,16 +22,22 @@ app.use((req, res, next) => {
     return express.json()(req, res, next);
 });
 
-const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173', process.env.FRONTEND_URL].filter(Boolean);
+const allowedOrigins = [
+    'http://localhost:3000',      // local dev
+    'http://localhost:5173',      // Vite dev
+    'https://komsyte2026-pos.onrender.com'  // hosted frontend URL
+];
+
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
-            callback(new Error('Not allowed by CORS'));
+            callback(new Error(`CORS Error: Origin ${origin} not allowed`));
         }
     },
-    credentials: true
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
 
 // ---------------- MongoDB ----------------
@@ -583,4 +589,5 @@ app.delete('/api/workers/:id', authMiddleware, ownerOnly, async (req, res) => {
 
 // ---------------- Start Server ----------------
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
