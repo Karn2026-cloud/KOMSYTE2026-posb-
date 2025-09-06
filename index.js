@@ -586,8 +586,19 @@ app.delete('/api/workers/:id', authMiddleware, ownerOnly, async (req, res) => {
         res.status(500).json({ error: 'Server error while removing worker.' });
     }
 });
+// ✅ Get all workers for the logged-in owner
+app.get('/api/workers', authMiddleware, ownerOnly, async (req, res) => {
+    try {
+        const workers = await Worker.find({ shopId: req.user.shopId }).select('-password');
+        res.json(workers);
+    } catch (err) {
+        console.error("Fetch workers error:", err);
+        res.status(500).json({ error: 'Server error while fetching workers.' });
+    }
+});
 
 // ---------------- Start Server ----------------
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
