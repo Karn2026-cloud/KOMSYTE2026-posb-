@@ -371,31 +371,48 @@ app.put('/api/profile/shop', authMiddleware, ownerOnly, async (req, res) => {
 });
 
 // ---------------- Subscription Routes (Now restricted to owners) ----------------
-app.get('/api/plans', (_, res) => res.json({ plans: Object.values(PLANS).map((p, i) => ({ id: Object.keys(PLANS)[i], ...p })) }));
+
+app.get('/api/plans', (req, res) => {
+    try {
+        // Convert the PLANS object into an array that the frontend can easily map over
+        const plansArray = Object.keys(PLANS).map(planId => ({
+            id: planId,
+            ...PLANS[planId]
+        }));
+        res.json({ plans: plansArray });
+    } catch (error) {
+        res.status(500).json({ error: 'Could not fetch plans.' });
+    }
+});
+
 
 app.post("/api/create-subscription", authMiddleware, ownerOnly, async (req, res) => {
     try {
         const { plan } = req.body;
-        const planId = RAZORPAY_PLAN_IDS[plan];
-        if (!planId) return res.status(400).json({ error: "Invalid plan selected" });
+        const razorpayPlanId = RAZORPAY_PLAN_IDS[plan];
 
-        const shop = await Shop.findById(req.user.shopId);
-        if (!shop) return res.status(404).json({ error: "Shop not found" });
+        if (!razorpayPlanId || razorpayPlanId.includes('YOUR_PLAN_ID')) {
+            return res.status(400).json({ error: "Invalid plan selected or Plan ID not configured in .env" });
+        }
 
         const subscription = await razorpay.subscriptions.create({
-            plan_id: planId,
+            plan_id: razorpayPlanId,
             customer_notify: 1,
-            total_count: 12,
+            total_count: 12, // This creates a subscription for 12 billing cycles (1 year)
         });
 
+        // Save the subscription details to the user's shop
+        const shop = await Shop.findById(req.user.shopId);
+        if (!shop) return res.status(404).json({ error: "Shop not found" });
+        
         shop.subscription.plan = plan;
         shop.subscription.razorpaySubscriptionId = subscription.id;
-        shop.subscription.status = 'inactive';
+        shop.subscription.status = 'created'; // The subscription is created but not yet active
         await shop.save();
 
         res.json({
-            key_id: RAZORPAY_KEY_ID,
             subscription_id: subscription.id,
+            key_id: process.env.RAZORPAY_KEY_ID
         });
 
     } catch (err) {
@@ -404,7 +421,78 @@ app.post("/api/create-subscription", authMiddleware, ownerOnly, async (req, res)
     }
 });
 
-app.post("/api/razorpay-webhook", async (req, res) => { /* ... no changes ... */ });
+// index.js
+
+app.post("/api/razorpay-webhook", async (req, res) => {
+    // Get the webhook secret from your environment variables
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    try {
+        // 1. VERIFY THE SIGNATURE (CRITICAL SECURITY STEP)
+        // =================================================
+        // Create a signature hash using the raw request body and your secret
+        const shasum = crypto.createHmac('sha256', secret);
+        shasum.update(req.body);
+        const digest = shasum.digest('hex');
+
+        // Compare the generated signature with the one from Razorpay's header
+        if (digest !== req.headers['x-razorpay-signature']) {
+            console.warn('Webhook signature mismatch!');
+            return res.status(400).json({ status: 'error', message: 'Invalid signature.' });
+        }
+
+        // 2. HANDLE THE EVENT (YOUR BUSINESS LOGIC)
+        // =================================================
+        // If the signature is valid, parse the event payload from the raw body
+        const event = JSON.parse(req.body);
+
+        // Use a switch statement to handle different subscription events
+        switch (event.event) {
+            case 'subscription.charged': {
+                const subscription = event.payload.subscription.entity;
+                const payment = event.payload.payment.entity;
+
+                // Find the shop associated with this subscription in your database
+                const shop = await Shop.findOne({ 'subscription.razorpaySubscriptionId': subscription.id });
+                
+                if (shop) {
+                    shop.subscription.status = 'active'; // Mark the subscription as active
+                    shop.subscription.razorpayPaymentId = payment.id; // Save the latest payment ID
+                    
+                    // Razorpay provides the next billing date as a Unix timestamp (in seconds)
+                    shop.subscription.nextBillingDate = new Date(subscription.current_end * 1000);
+                    
+                    await shop.save();
+                    console.log(`✅ Subscription for shop ${shop.shopName} successfully charged and updated.`);
+                }
+                break;
+            }
+
+            case 'subscription.halted': {
+                const subscription = event.payload.subscription.entity;
+                const shop = await Shop.findOne({ 'subscription.razorpaySubscriptionId': subscription.id });
+
+                if (shop) {
+                    shop.subscription.status = 'halted'; // Mark subscription as halted
+                    await shop.save();
+                    console.log(`⚠️ Subscription for shop ${shop.shopName} has been halted due to payment failure.`);
+                }
+                break;
+            }
+
+            // You can add more cases here for other events like 'subscription.cancelled'
+        }
+
+        // 3. RESPOND TO RAZORPAY (ACKNOWLEDGEMENT)
+        // =================================================
+        // Send a 200 OK response to let Razorpay know you've received the event
+        res.status(200).json({ status: 'ok' });
+
+    } catch (error) {
+        console.error('Error processing Razorpay webhook:', error);
+        res.status(500).json({ status: 'error', message: 'Something went wrong.' });
+    }
+});
 
 // ---------------- Products Routes ----------------
 app.post('/api/products', authMiddleware, subscriptionMiddleware(), async (req, res) => {
@@ -633,4 +721,5 @@ app.post('/api/contact', async (req, res) => {
 // ---------------- Start Server ----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
 
