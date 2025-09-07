@@ -26,9 +26,9 @@ app.use((req, res, next) => {
 const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:5173',
-    'https://komsyte2026-posb23.onrender.com' // Correct frontend URL
+    'https://komsyte2026-pos.onrender.com',      // URL from the error message
+    'https://komsyte2026-posb23.onrender.com'  // Your other frontend URL
 ];
-
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) {
@@ -627,3 +627,4 @@ app.post('/api/contact', async (req, res) => {
 // ---------------- Start Server ----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
