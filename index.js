@@ -57,15 +57,19 @@ const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
 
 const RAZORPAY_PLAN_IDS = {
+    // ✅ NEW: Added the plan for ₹1
+    '1': process.env.PLAN_ID_1 || 'plan_YOUR_1_RUPEE_PLAN_ID', 
+
     '299': process.env.PLAN_ID_299 || 'plan_YOUR_299_PLAN_ID',
     '699': process.env.PLAN_ID_699 || 'plan_YOUR_699_PLAN_ID',
     '1499': process.env.PLAN_ID_1499 || 'plan_YOUR_1499_PLAN_ID'
 };
 
 const PLANS = {
-    free: {
-        name: 'Free',
-        price: 0,
+    // ✅ MODIFIED: Replaced the 'free' plan with the new '1' rupee plan
+    '1': {
+        name: 'Trial',
+        price: 1,
         maxProducts: 10,
         features: {
             billingHistory: true, downloadBill: false, updateQuantity: false,
@@ -98,7 +102,6 @@ const PLANS = {
         }
     }
 };
-
 // ---------------- Razorpay & Nodemailer Setup ----------------
 const razorpay = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET });
 const transporter = (EMAIL_USER && EMAIL_PASS) ? nodemailer.createTransport({ service: 'gmail', auth: { user: EMAIL_USER, pass: EMAIL_PASS } }) : null;
@@ -630,3 +633,4 @@ app.post('/api/contact', async (req, res) => {
 // ---------------- Start Server ----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
