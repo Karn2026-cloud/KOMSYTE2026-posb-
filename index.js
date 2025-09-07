@@ -22,10 +22,11 @@ app.use((req, res, next) => {
     return express.json()(req, res, next);
 });
 
+// ✅ CORRECTED: Updated the frontend URL
 const allowedOrigins = [
-    'http://localhost:3000',      // local dev
-    'http://localhost:5173',      // Vite dev
-    'https://komsyte2026-pos.onrender.com'  // hosted frontend URL
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://komsyte2026-posb23.onrender.com' // Correct frontend URL
 ];
 
 app.use(cors({
@@ -57,49 +58,30 @@ const EMAIL_USER = process.env.EMAIL_USER;
 const EMAIL_PASS = process.env.EMAIL_PASS;
 
 const RAZORPAY_PLAN_IDS = {
-    // ✅ NEW: Added the plan for ₹1
-    '1': process.env.PLAN_ID_1 || 'plan_YOUR_1_RUPEE_PLAN_ID', 
-
+    '1': process.env.PLAN_ID_1 || 'plan_YOUR_1_RUPEE_PLAN_ID',
     '299': process.env.PLAN_ID_299 || 'plan_YOUR_299_PLAN_ID',
     '699': process.env.PLAN_ID_699 || 'plan_YOUR_699_PLAN_ID',
     '1499': process.env.PLAN_ID_1499 || 'plan_YOUR_1499_PLAN_ID'
 };
 
 const PLANS = {
-    // ✅ MODIFIED: Replaced the 'free' plan with the new '1' rupee plan
     '1': {
         name: 'Trial',
         price: 1,
         maxProducts: 10,
-        features: {
-            billingHistory: true, downloadBill: false, updateQuantity: false,
-            reports: 'none', whatsappShare: false, emailShare: false,
-            lowStockAlert: false, manualAdd: false, topProduct: false
-        }
+        features: { billingHistory: true, downloadBill: false, updateQuantity: false, reports: 'none', whatsappShare: false, emailShare: false, lowStockAlert: false, manualAdd: false, topProduct: false }
     },
     '299': {
         name: 'Basic', price: 299, maxProducts: 50,
-        features: {
-            billingHistory: true, downloadBill: true, updateQuantity: true,
-            reports: 'simple', whatsappShare: false, emailShare: false,
-            lowStockAlert: false, manualAdd: false, topProduct: false
-        }
+        features: { billingHistory: true, downloadBill: true, updateQuantity: true, reports: 'simple', whatsappShare: false, emailShare: false, lowStockAlert: false, manualAdd: false, topProduct: false }
     },
     '699': {
         name: 'Growth', price: 699, maxProducts: 100,
-        features: {
-            billingHistory: true, downloadBill: true, updateQuantity: true,
-            reports: 'all', whatsappShare: true, emailShare: false,
-            lowStockAlert: true, manualAdd: true, topProduct: true
-        }
+        features: { billingHistory: true, downloadBill: true, updateQuantity: true, reports: 'all', whatsappShare: true, emailShare: false, lowStockAlert: true, manualAdd: true, topProduct: true }
     },
     '1499': {
         name: 'Premium', price: 1499, maxProducts: Infinity,
-        features: {
-            billingHistory: true, downloadBill: true, updateQuantity: true,
-            reports: 'all', whatsappShare: true, emailShare: true,
-            lowStockAlert: true, manualAdd: true, topProduct: true
-        }
+        features: { billingHistory: true, downloadBill: true, updateQuantity: true, reports: 'all', whatsappShare: true, emailShare: true, lowStockAlert: true, manualAdd: true, topProduct: true }
     }
 };
 // ---------------- Razorpay & Nodemailer Setup ----------------
@@ -107,20 +89,22 @@ const razorpay = new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KE
 const transporter = (EMAIL_USER && EMAIL_PASS) ? nodemailer.createTransport({ service: 'gmail', auth: { user: EMAIL_USER, pass: EMAIL_PASS } }) : null;
 
 // ---------------- Schemas ----------------
+// ✅ CORRECTED: Updated default plan from 'free' to '1'
 const subscriptionSchema = new mongoose.Schema({
-    plan: { type: String, enum: Object.keys(PLANS), default: 'free' },
-    status: { type: String, enum: ['inactive', 'active', 'canceled', 'halted'], default: 'active' },
+    plan: { type: String, enum: Object.keys(PLANS), default: '1' },
+    status: { type: String, enum: ['inactive', 'active', 'canceled', 'halted', 'created'], default: 'active' },
     startDate: Date,
     nextBillingDate: Date,
     razorpayPaymentId: String,
     razorpaySubscriptionId: String,
 }, { _id: false });
 
+// ✅ CORRECTED: Updated default subscription from 'free' to '1'
 const shopSchema = new mongoose.Schema({
     shopName: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    subscription: { type: subscriptionSchema, default: () => ({ plan: 'free', status: 'active' }) },
+    subscription: { type: subscriptionSchema, default: () => ({ plan: '1', status: 'active' }) },
 }, { timestamps: true });
 
 const productSchema = new mongoose.Schema({
@@ -132,15 +116,13 @@ const productSchema = new mongoose.Schema({
 }, { timestamps: true });
 productSchema.index({ shopId: 1, barcode: 1 }, { unique: true });
 
-// 🛠️ MODIFIED: Bill Schema for Performance Tracking
 const billSchema = new mongoose.Schema({
     shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true },
     receiptNo: { type: String, required: true },
     items: [{ barcode: String, name: String, price: Number, quantity: Number, subtotal: Number, discount: Number }],
     totalAmount: Number,
     customerMobile: String,
-    // ✅ NEW: Field to track which worker created the bill.
-    workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Worker', required: false },
+    workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Worker' },
 }, { timestamps: true });
 
 const workerSchema = new mongoose.Schema({
@@ -158,7 +140,6 @@ const Bill = mongoose.model('Bill', billSchema);
 const Worker = mongoose.model('Worker', workerSchema);
 
 // ---------------- Middleware ----------------
-// 🛠️ MODIFIED: Auth Middleware to handle new JWT structure
 function authMiddleware(req, res, next) {
     try {
         const auth = req.headers.authorization || '';
@@ -167,7 +148,6 @@ function authMiddleware(req, res, next) {
         const token = auth.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        // ✅ NEW: Attach all decoded info to the request object
         req.user = {
             shopId: decoded.shopId,
             userId: decoded.userId,
@@ -179,7 +159,6 @@ function authMiddleware(req, res, next) {
     }
 }
 
-// ✅ NEW: Middleware to restrict access to Owners only
 function ownerOnly(req, res, next) {
     if (req.user.role !== 'owner') {
         return res.status(403).json({ error: 'Access denied. This action is for shop owners only.' });
@@ -187,14 +166,13 @@ function ownerOnly(req, res, next) {
     next();
 }
 
-
 function subscriptionMiddleware(requiredPlans = []) {
     return async (req, res, next) => {
         try {
-            const shop = await Shop.findById(req.user.shopId); // Using new req.user
+            const shop = await Shop.findById(req.user.shopId);
             if (!shop) return res.status(404).json({ error: 'Shop not found' });
 
-            const planKey = shop.subscription?.plan || 'free';
+            const planKey = shop.subscription?.plan || '1'; // Default to '1' if somehow missing
             const planConfig = PLANS[planKey];
             if (!planConfig) return res.status(400).json({ error: 'Invalid plan configured' });
 
@@ -202,7 +180,7 @@ function subscriptionMiddleware(requiredPlans = []) {
                 return res.status(403).json({ error: `Feature available only for ${requiredPlans.join(', ')} plan(s).` });
             }
 
-            if (planKey !== 'free' && shop.subscription?.status !== 'active') {
+            if (planKey !== '1' && shop.subscription?.status !== 'active') { // Check paid plans
                 return res.status(403).json({ error: 'Subscription is not active. Please check your payment status.' });
             }
 
@@ -227,7 +205,6 @@ app.post('/api/signup', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const shop = await new Shop({ shopName, email: email.toLowerCase(), password: hashedPassword }).save();
         
-        // 🛠️ MODIFIED: Signup creates an owner token
         const token = jwt.sign({ 
             shopId: shop._id, 
             userId: shop._id, 
@@ -240,7 +217,6 @@ app.post('/api/signup', async (req, res) => {
     }
 });
 
-// 🛠️ MODIFIED: Unified Login for Owners and Employees
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -268,12 +244,11 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ error: 'Invalid credentials' });
         }
 
-        const tokenPayload = {
+        const token = jwt.sign({
             shopId: shopId,
             userId: user._id,
             role: role
-        };
-        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: '7d' });
+        }, JWT_SECRET, { expiresIn: '7d' });
 
         res.json({
             token,
@@ -304,7 +279,6 @@ app.get('/api/me', authMiddleware, async (req, res) => {
     }
 });
 
-// 🛠️ MODIFIED: Profile route now restricted to owners
 app.get('/api/profile', authMiddleware, ownerOnly, async (req, res) => {
     try {
         const [shop, workers] = await Promise.all([
@@ -332,7 +306,6 @@ app.get('/api/profile', authMiddleware, ownerOnly, async (req, res) => {
     }
 });
 
-// 🛠️ MODIFIED: Update shop route now uses new auth
 app.put('/api/profile/shop', authMiddleware, ownerOnly, async (req, res) => {
     try {
         const { shopName, email } = req.body;
@@ -357,12 +330,10 @@ app.put('/api/profile/shop', authMiddleware, ownerOnly, async (req, res) => {
         shop.email = email.toLowerCase();
         await shop.save();
 
-        const updatedShop = {
-            _id: shop._id,
-            shopName: shop.shopName,
-            email: shop.email
-        }
-        res.json({ message: 'Shop information updated successfully.', shop: updatedShop });
+        res.json({
+            message: 'Shop information updated successfully.',
+            shop: { _id: shop._id, shopName: shop.shopName, email: shop.email }
+        });
 
     } catch (err) {
         console.error("Update shop error:", err);
@@ -370,11 +341,9 @@ app.put('/api/profile/shop', authMiddleware, ownerOnly, async (req, res) => {
     }
 });
 
-// ---------------- Subscription Routes (Now restricted to owners) ----------------
-
+// ---------------- Subscription Routes ----------------
 app.get('/api/plans', (req, res) => {
     try {
-        // Convert the PLANS object into an array that the frontend can easily map over
         const plansArray = Object.keys(PLANS).map(planId => ({
             id: planId,
             ...PLANS[planId]
@@ -398,16 +367,15 @@ app.post("/api/create-subscription", authMiddleware, ownerOnly, async (req, res)
         const subscription = await razorpay.subscriptions.create({
             plan_id: razorpayPlanId,
             customer_notify: 1,
-            total_count: 12, // This creates a subscription for 12 billing cycles (1 year)
+            total_count: 12,
         });
 
-        // Save the subscription details to the user's shop
         const shop = await Shop.findById(req.user.shopId);
         if (!shop) return res.status(404).json({ error: "Shop not found" });
         
         shop.subscription.plan = plan;
         shop.subscription.razorpaySubscriptionId = subscription.id;
-        shop.subscription.status = 'created'; // The subscription is created but not yet active
+        shop.subscription.status = 'created';
         await shop.save();
 
         res.json({
@@ -421,73 +389,47 @@ app.post("/api/create-subscription", authMiddleware, ownerOnly, async (req, res)
     }
 });
 
-// index.js
-
 app.post("/api/razorpay-webhook", async (req, res) => {
-    // Get the webhook secret from your environment variables
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-
     try {
-        // 1. VERIFY THE SIGNATURE (CRITICAL SECURITY STEP)
-        // =================================================
-        // Create a signature hash using the raw request body and your secret
         const shasum = crypto.createHmac('sha256', secret);
         shasum.update(req.body);
         const digest = shasum.digest('hex');
 
-        // Compare the generated signature with the one from Razorpay's header
         if (digest !== req.headers['x-razorpay-signature']) {
             console.warn('Webhook signature mismatch!');
             return res.status(400).json({ status: 'error', message: 'Invalid signature.' });
         }
 
-        // 2. HANDLE THE EVENT (YOUR BUSINESS LOGIC)
-        // =================================================
-        // If the signature is valid, parse the event payload from the raw body
         const event = JSON.parse(req.body);
 
-        // Use a switch statement to handle different subscription events
         switch (event.event) {
             case 'subscription.charged': {
                 const subscription = event.payload.subscription.entity;
                 const payment = event.payload.payment.entity;
-
-                // Find the shop associated with this subscription in your database
                 const shop = await Shop.findOne({ 'subscription.razorpaySubscriptionId': subscription.id });
                 
                 if (shop) {
-                    shop.subscription.status = 'active'; // Mark the subscription as active
-                    shop.subscription.razorpayPaymentId = payment.id; // Save the latest payment ID
-                    
-                    // Razorpay provides the next billing date as a Unix timestamp (in seconds)
+                    shop.subscription.status = 'active';
+                    shop.subscription.razorpayPaymentId = payment.id;
                     shop.subscription.nextBillingDate = new Date(subscription.current_end * 1000);
-                    
                     await shop.save();
                     console.log(`✅ Subscription for shop ${shop.shopName} successfully charged and updated.`);
                 }
                 break;
             }
-
             case 'subscription.halted': {
                 const subscription = event.payload.subscription.entity;
                 const shop = await Shop.findOne({ 'subscription.razorpaySubscriptionId': subscription.id });
-
                 if (shop) {
-                    shop.subscription.status = 'halted'; // Mark subscription as halted
+                    shop.subscription.status = 'halted';
                     await shop.save();
-                    console.log(`⚠️ Subscription for shop ${shop.shopName} has been halted due to payment failure.`);
+                    console.log(`⚠️ Subscription for shop ${shop.shopName} has been halted.`);
                 }
                 break;
             }
-
-            // You can add more cases here for other events like 'subscription.cancelled'
         }
-
-        // 3. RESPOND TO RAZORPAY (ACKNOWLEDGEMENT)
-        // =================================================
-        // Send a 200 OK response to let Razorpay know you've received the event
         res.status(200).json({ status: 'ok' });
-
     } catch (error) {
         console.error('Error processing Razorpay webhook:', error);
         res.status(500).json({ status: 'error', message: 'Something went wrong.' });
@@ -524,7 +466,7 @@ app.post('/api/products', authMiddleware, subscriptionMiddleware(), async (req, 
     }
 });
 
-app.post('/api/stock/upload', authMiddleware, ownerOnly, subscriptionMiddleware(['299', '699', '1499']), upload.single('file'), async (req, res) => { /* ... logic uses req.user.shopId ... */ });
+app.post('/api/stock/upload', authMiddleware, ownerOnly, subscriptionMiddleware(['299', '699', '1499']), upload.single('file'), async (req, res) => { /* ... existing logic ... */ });
 
 app.delete('/api/stock/:id', authMiddleware, async (req, res) => {
     try {
@@ -547,7 +489,6 @@ app.get('/api/stock', authMiddleware, async (req, res) => {
 });
 
 // ---------------- Billing Routes ----------------
-// 🛠️ MODIFIED: Create Bill endpoint now tracks the worker
 app.post('/api/bills', authMiddleware, subscriptionMiddleware(), async (req, res) => {
     const session = await mongoose.startSession();
     try {
@@ -559,29 +500,23 @@ app.post('/api/bills', authMiddleware, subscriptionMiddleware(), async (req, res
             }
 
             const planConfig = req.planConfig;
-            const billItems = [];
             let computedTotal = 0;
+            const billItems = [];
 
             for (const it of items) {
+                const subtotal = (it.price * it.quantity) - (it.discount || 0);
+                computedTotal += subtotal;
+                
                 if (it.barcode && !it.barcode.startsWith('manual-')) {
                     const product = await Product.findOne({ shopId: req.user.shopId, barcode: it.barcode }).session(session);
                     if (!product) throw new Error(`Product not found: ${it.barcode}`);
                     if (product.quantity < it.quantity) throw new Error(`Insufficient stock for ${product.name}`);
-
-                    const subtotal = (product.price * it.quantity) - (it.discount || 0);
+                    
                     billItems.push({ ...it, price: product.price, name: product.name, subtotal });
-                    computedTotal += subtotal;
-
-                    await Product.updateOne(
-                        { _id: product._id },
-                        { $inc: { quantity: -it.quantity } },
-                        { session }
-                    );
+                    await Product.updateOne({ _id: product._id }, { $inc: { quantity: -it.quantity } }, { session });
                 } else {
                     if (!planConfig.features.manualAdd) throw new Error('Your plan does not allow adding manual products to bills.');
-                    const subtotal = (it.price * it.quantity) - (it.discount || 0);
                     billItems.push({ ...it, subtotal });
-                    computedTotal += subtotal;
                 }
             }
 
@@ -596,7 +531,6 @@ app.post('/api/bills', authMiddleware, subscriptionMiddleware(), async (req, res
                 customerMobile: customerMobile || null,
             };
 
-            // ✅ NEW: If the user is a worker, save their ID with the bill
             if (req.user.role === 'worker') {
                 billData.workerId = req.user.userId;
             }
@@ -609,14 +543,11 @@ app.post('/api/bills', authMiddleware, subscriptionMiddleware(), async (req, res
         res.status(201).json({ message: 'Bill finalized successfully', bill: finalBill });
 
     } catch (err) {
-        if (session.inTransaction()) {
-            await session.abortTransaction();
-        }
+        if (session.inTransaction()) await session.abortTransaction();
         session.endSession();
         res.status(400).json({ error: err.message || 'Server error while finalizing bill' });
     }
 });
-
 
 app.get('/api/bills', authMiddleware, async (req, res) => {
     try {
@@ -627,25 +558,19 @@ app.get('/api/bills', authMiddleware, async (req, res) => {
     }
 });
 
-// ---------------- Worker Management Routes (Now restricted to owners) ----------------
-// 🛠️ MODIFIED: All worker management routes are now owner-only
+// ---------------- Worker Management Routes ----------------
 app.post('/api/workers/add', authMiddleware, ownerOnly, async (req, res) => {
     try {
         const { name, email, password } = req.body;
-        if (!name || !email || !password) {
-            return res.status(400).json({ error: 'Name, email, and password are required.' });
-        }
+        if (!name || !email || !password) return res.status(400).json({ error: 'Name, email, and password are required.' });
 
         const existingWorker = await Worker.findOne({ email: email.toLowerCase() });
         const existingShop = await Shop.findOne({ email: email.toLowerCase() });
-        if (existingWorker || existingShop) {
-            return res.status(409).json({ error: 'This email is already registered.' });
-        }
+        if (existingWorker || existingShop) return res.status(409).json({ error: 'This email is already registered.' });
 
         const hashedPassword = await bcrypt.hash(password, 10);
-
         const newWorker = new Worker({
-            shopId: req.user.shopId, // Use shopId from authenticated owner's token
+            shopId: req.user.shopId,
             name,
             email: email.toLowerCase(),
             password: hashedPassword
@@ -663,12 +588,9 @@ app.post('/api/workers/add', authMiddleware, ownerOnly, async (req, res) => {
 app.delete('/api/workers/:id', authMiddleware, ownerOnly, async (req, res) => {
     try {
         const workerId = req.params.id;
-        // Ensure owner can only delete workers from their own shop
         const result = await Worker.findOneAndDelete({ _id: workerId, shopId: req.user.shopId });
 
-        if (!result) {
-            return res.status(404).json({ error: 'Worker not found or you do not have permission to remove them.' });
-        }
+        if (!result) return res.status(404).json({ error: 'Worker not found or you do not have permission to remove them.' });
 
         res.json({ message: 'Worker removed successfully.' });
 
@@ -678,36 +600,21 @@ app.delete('/api/workers/:id', authMiddleware, ownerOnly, async (req, res) => {
     }
 });
 
-// ---------------- ✅ NEW: Contact Form Route ----------------
+// ---------------- Contact Form Route ----------------
 app.post('/api/contact', async (req, res) => {
-    // Check if the email service is configured in your .env file
-    if (!transporter) {
-        return res.status(503).json({ error: 'Contact service is temporarily unavailable.' });
-    }
+    if (!transporter) return res.status(503).json({ error: 'Contact service is temporarily unavailable.' });
 
     try {
         const { name, email, subject, message } = req.body;
-
-        // Basic validation
-        if (!name || !email || !subject || !message) {
-            return res.status(400).json({ error: 'All fields are required.' });
-        }
+        if (!name || !email || !subject || !message) return res.status(400).json({ error: 'All fields are required.' });
 
         const mailOptions = {
-            from: `"KOMSyte Contact Form" <${EMAIL_USER}>`, // Sender address (your app's email)
-            to: 'karanindrale253@gmail.com', // List of receivers (your support email)
-            subject: `[Contact Form] ${subject}`, // Subject line
-            html: `
-                <h3>New Message from KOMSyte Contact Form</h3>
-                <p><strong>Name:</strong> ${name}</p>
-                <p><strong>Email:</strong> ${email}</p>
-                <hr>
-                <p><strong>Message:</strong></p>
-                <p>${message.replace(/\n/g, '<br>')}</p>
-            `,
+            from: `"KOMSyte Contact Form" <${EMAIL_USER}>`,
+            to: 'karanindrale253@gmail.com',
+            subject: `[Contact Form] ${subject}`,
+            html: `<h3>New Message from KOMSyte Contact Form</h3><p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><hr><p><strong>Message:</strong></p><p>${message.replace(/\n/g, '<br>')}</p>`,
         };
 
-        // Send the email
         await transporter.sendMail(mailOptions);
         res.status(200).json({ message: 'Your message has been sent successfully!' });
 
@@ -717,9 +624,6 @@ app.post('/api/contact', async (req, res) => {
     }
 });
 
-
 // ---------------- Start Server ----------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-
-
